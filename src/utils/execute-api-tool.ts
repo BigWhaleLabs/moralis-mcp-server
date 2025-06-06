@@ -173,6 +173,11 @@ export async function executeApiTool(
 
     headers['X-API-Key'] = process.env.MORALIS_API_KEY as string
 
+    console.log(
+      `Executing tool '${toolName}' with URL: ${requestUrl}, headers:`,
+      headers
+    )
+
     // Prepare the axios request configuration
     const config: AxiosRequestConfig = {
       method: definition.method.toUpperCase(),
