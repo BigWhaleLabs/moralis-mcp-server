@@ -1,24 +1,24 @@
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import axios, { type AxiosRequestConfig, type AxiosError } from "axios";
-import { ZodError, z } from "zod";
-import { jsonSchemaToZod } from 'json-schema-to-zod';
-import { Config } from "../config.js";
-import type { JsonObject } from "../types/index.js";
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import axios, { type AxiosRequestConfig, type AxiosError } from 'axios'
+import { ZodError, z } from 'zod'
+import { jsonSchemaToZod } from 'json-schema-to-zod'
+import { Config } from '../config.js'
+import type { JsonObject } from '../types/index.js'
 
 /**
  * Interface for MCP Tool Definition
  */
 export interface McpToolDefinition {
-  name: string;
-  description: string;
-  inputSchema: any;
-  method: string;
-  pathTemplate: string;
-  executionParameters: { name: string; in: string }[];
-  requestBodyContentType?: string;
-  securityRequirements: any[];
-  prompt?: string;
-  parameters: any[];
+  name: string
+  description: string
+  inputSchema: any
+  method: string
+  pathTemplate: string
+  executionParameters: { name: string; in: string }[]
+  requestBodyContentType?: string
+  securityRequirements: any[]
+  prompt?: string
+  parameters: any[]
 }
 
 /**
@@ -35,26 +35,28 @@ export async function executeApiTool(
   definition: McpToolDefinition,
   toolArgs: JsonObject,
   allSecuritySchemes: Record<string, any>,
-  token?: string,
+  token?: string
 ): Promise<CallToolResult> {
   try {
     // Validate arguments against the input schema
-    let validatedArgs: JsonObject;
+    let validatedArgs: JsonObject
     try {
       const zodSchema = getZodSchemaFromJsonSchema(
         definition.inputSchema,
-        toolName,
-      );
+        toolName
+      )
       const argsToParse =
-        typeof toolArgs === 'object' && toolArgs !== null ? toolArgs : {};
-      validatedArgs = zodSchema.parse(argsToParse);
+        typeof toolArgs === 'object' && toolArgs !== null ? toolArgs : {}
+      validatedArgs = zodSchema.parse(argsToParse)
     } catch (error: unknown) {
       if (error instanceof ZodError) {
-        const validationErrorMessage = `Invalid arguments for tool '${toolName}': ${error.errors.map((e) => `${e.path.join('.')} (${e.code}): ${e.message}`).join(', ')}`;
-        return { content: [{ type: 'text', text: validationErrorMessage }] };
+        const validationErrorMessage = `Invalid arguments for tool '${toolName}': ${error.errors
+          .map((e) => `${e.path.join('.')} (${e.code}): ${e.message}`)
+          .join(', ')}`
+        return { content: [{ type: 'text', text: validationErrorMessage }] }
       } else {
         const errorMessage =
-          error instanceof Error ? error.message : String(error);
+          error instanceof Error ? error.message : String(error)
         return {
           content: [
             {
@@ -62,53 +64,53 @@ export async function executeApiTool(
               text: `Internal error during validation setup: ${errorMessage}`,
             },
           ],
-        };
+        }
       }
     }
 
     // Prepare URL, query parameters, headers, and request body
-    let urlPath = definition.pathTemplate;
-    const queryParams: Record<string, any> = {};
+    let urlPath = definition.pathTemplate
+    const queryParams: Record<string, any> = {}
     const headers: Record<string, string> = {
       Accept: 'application/json',
       'X-Moralis-Platform': 'MCP',
-    };
-    let requestBodyData: any = undefined;
+    }
+    let requestBodyData: any = undefined
 
     // Apply parameters to the URL path, query, or headers
     definition.executionParameters.forEach((param) => {
-      const value = validatedArgs[param.name];
+      const value = validatedArgs[param.name]
       if (typeof value !== 'undefined' && value !== null) {
         if (param.in === 'path') {
           urlPath = urlPath.replace(
             `{${param.name}}`,
-            encodeURIComponent(String(value)),
-          );
+            encodeURIComponent(String(value))
+          )
         } else if (param.in === 'query') {
-          queryParams[param.name] = value;
+          queryParams[param.name] = value
         } else if (param.in === 'header') {
-          headers[param.name.toLowerCase()] = String(value);
+          headers[param.name.toLowerCase()] = String(value)
         }
       }
-    });
+    })
 
     // Ensure all path parameters are resolved
     if (urlPath.includes('{')) {
-      throw new Error(`Failed to resolve path parameters: ${urlPath}`);
+      throw new Error(`Failed to resolve path parameters: ${urlPath}`)
     }
 
     // Construct the full URL
     const requestUrl = Config.API_BASE_URL
       ? `${Config.API_BASE_URL}${urlPath}`
-      : urlPath;
+      : urlPath
 
     // Handle request body if needed
     if (
       definition.requestBodyContentType &&
       typeof validatedArgs['requestBody'] !== 'undefined'
     ) {
-      requestBodyData = validatedArgs['requestBody'];
-      headers['content-type'] = definition.requestBodyContentType;
+      requestBodyData = validatedArgs['requestBody']
+      headers['content-type'] = definition.requestBodyContentType
     }
 
     // Apply security requirements if available
@@ -116,33 +118,33 @@ export async function executeApiTool(
     const appliedSecurity = definition.securityRequirements?.find((req) => {
       // Try each security requirement (combined with OR)
       return Object.entries(req).every(([schemeName, scopesArray]) => {
-        const scheme = allSecuritySchemes[schemeName];
-        if (!scheme) return false;
+        const scheme = allSecuritySchemes[schemeName]
+        if (!scheme) return false
 
         // API Key security (header, query, cookie)
         if (scheme.type === 'apiKey') {
-          return !!token || !!Config.MORALIS_API_KEY;
+          return !!token || !!Config.MORALIS_API_KEY
         }
 
-        return false;
-      });
-    });
+        return false
+      })
+    })
 
     // If we found matching security scheme(s), apply them
     if (appliedSecurity) {
       // Apply each security scheme from this requirement (combined with AND)
       for (const [schemeName, scopesArray] of Object.entries(appliedSecurity)) {
-        const scheme = allSecuritySchemes[schemeName];
+        const scheme = allSecuritySchemes[schemeName]
 
         // API Key security
         if (scheme?.type === 'apiKey') {
-          const apiKey = token || Config.MORALIS_API_KEY;
+          const apiKey = token || Config.MORALIS_API_KEY
           if (apiKey) {
             if (scheme.in === 'header') {
-              headers[scheme.name.toLowerCase()] = apiKey;
+              headers[scheme.name.toLowerCase()] = apiKey
               console.error(
-                `Applied API key '${schemeName}' in header '${scheme.name}'`,
-              );
+                `Applied API key '${schemeName}' in header '${scheme.name}'`
+              )
             }
           }
         }
@@ -155,19 +157,21 @@ export async function executeApiTool(
         .map((req) => {
           const parts = Object.entries(req)
             .map(([name, scopesArray]) => {
-              const scopes = scopesArray as string[];
-              if (scopes.length === 0) return name;
-              return `${name} (scopes: ${scopes.join(', ')})`;
+              const scopes = scopesArray as string[]
+              if (scopes.length === 0) return name
+              return `${name} (scopes: ${scopes.join(', ')})`
             })
-            .join(' AND ');
-          return `[${parts}]`;
+            .join(' AND ')
+          return `[${parts}]`
         })
-        .join(' OR ');
+        .join(' OR ')
 
       console.warn(
-        `Tool '${toolName}' requires security: ${securityRequirementsString}, but no suitable credentials found.`,
-      );
+        `Tool '${toolName}' requires security: ${securityRequirementsString}, but no suitable credentials found.`
+      )
     }
+
+    headers['X-API-Key'] = process.env.MORALIS_API_KEY as string
 
     // Prepare the axios request configuration
     const config: AxiosRequestConfig = {
@@ -176,19 +180,19 @@ export async function executeApiTool(
       params: queryParams,
       headers: headers,
       ...(requestBodyData !== undefined && { data: requestBodyData }),
-    };
+    }
 
     // Log request info to stderr (doesn't affect MCP output)
     console.error(
-      `Executing tool "${toolName}": ${config.method} ${config.url}`,
-    );
+      `Executing tool "${toolName}": ${config.method} ${config.url}`
+    )
 
     // Execute the request
-    const response = await axios(config);
+    const response = await axios(config)
 
     // Process and format the response
-    let responseText = '';
-    const contentType = response.headers['content-type']?.toLowerCase() || '';
+    let responseText = ''
+    const contentType = response.headers['content-type']?.toLowerCase() || ''
 
     // Handle JSON responses
     if (
@@ -197,22 +201,22 @@ export async function executeApiTool(
       response.data !== null
     ) {
       try {
-        responseText = JSON.stringify(response.data, null, 2);
+        responseText = JSON.stringify(response.data, null, 2)
       } catch (e) {
-        responseText = '[Stringify Error]';
+        responseText = '[Stringify Error]'
       }
     }
     // Handle string responses
     else if (typeof response.data === 'string') {
-      responseText = response.data;
+      responseText = response.data
     }
     // Handle other response types
     else if (response.data !== undefined && response.data !== null) {
-      responseText = String(response.data);
+      responseText = String(response.data)
     }
     // Handle empty responses
     else {
-      responseText = `(Status: ${response.status} - No body content)`;
+      responseText = `(Status: ${response.status} - No body content)`
     }
 
     // Return formatted response
@@ -223,32 +227,29 @@ export async function executeApiTool(
           text: `API Response (Status: ${response.status}):\n${responseText}`,
         },
       ],
-    };
+    }
   } catch (error: unknown) {
     // Handle errors during execution
-    let errorMessage: string;
+    let errorMessage: string
 
     // Format Axios errors specially
     if (axios.isAxiosError(error)) {
-      errorMessage = formatApiError(error);
+      errorMessage = formatApiError(error)
     }
     // Handle standard errors
     else if (error instanceof Error) {
-      errorMessage = error.message;
+      errorMessage = error.message
     }
     // Handle unexpected error types
     else {
-      errorMessage = `Unexpected error: ${String(error)}`;
+      errorMessage = `Unexpected error: ${String(error)}`
     }
 
     // Log error to stderr
-    console.error(
-      `Error during execution of tool '${toolName}':`,
-      errorMessage,
-    );
+    console.error(`Error during execution of tool '${toolName}':`, errorMessage)
 
     // Return error message to client
-    return { content: [{ type: 'text', text: errorMessage }] };
+    return { content: [{ type: 'text', text: errorMessage }] }
   }
 }
 
@@ -259,30 +260,36 @@ export async function executeApiTool(
  * @returns Formatted error message
  */
 function formatApiError(error: AxiosError): string {
-  let message = 'API request failed.';
+  let message = 'API request failed.'
   if (error.response) {
-    message = `API Error: Status ${error.response.status} (${error.response.statusText || 'Status text not available'}). `;
-    const responseData = error.response.data;
-    const MAX_LEN = 200;
+    message = `API Error: Status ${error.response.status} (${
+      error.response.statusText || 'Status text not available'
+    }). `
+    const responseData = error.response.data
+    const MAX_LEN = 200
     if (typeof responseData === 'string') {
-      message += `Response: ${responseData.substring(0, MAX_LEN)}${responseData.length > MAX_LEN ? '...' : ''}`;
+      message += `Response: ${responseData.substring(0, MAX_LEN)}${
+        responseData.length > MAX_LEN ? '...' : ''
+      }`
     } else if (responseData) {
       try {
-        const jsonString = JSON.stringify(responseData);
-        message += `Response: ${jsonString.substring(0, MAX_LEN)}${jsonString.length > MAX_LEN ? '...' : ''}`;
+        const jsonString = JSON.stringify(responseData)
+        message += `Response: ${jsonString.substring(0, MAX_LEN)}${
+          jsonString.length > MAX_LEN ? '...' : ''
+        }`
       } catch {
-        message += 'Response: [Could not serialize data]';
+        message += 'Response: [Could not serialize data]'
       }
     } else {
-      message += 'No response body received.';
+      message += 'No response body received.'
     }
   } else if (error.request) {
-    message = 'API Network Error: No response received from server.';
-    if (error.code) message += ` (Code: ${error.code})`;
+    message = 'API Network Error: No response received from server.'
+    if (error.code) message += ` (Code: ${error.code})`
   } else {
-    message += `API Request Setup Error: ${error.message}`;
+    message += `API Request Setup Error: ${error.message}`
   }
-  return message;
+  return message
 }
 
 /**
@@ -294,23 +301,23 @@ function formatApiError(error: AxiosError): string {
  */
 function getZodSchemaFromJsonSchema(
   jsonSchema: any,
-  toolName: string,
+  toolName: string
 ): z.ZodTypeAny {
   if (typeof jsonSchema !== 'object' || jsonSchema === null) {
-    return z.object({}).passthrough();
+    return z.object({}).passthrough()
   }
   try {
-    const zodSchemaString = jsonSchemaToZod(jsonSchema);
-    const zodSchema = eval(zodSchemaString);
+    const zodSchemaString = jsonSchemaToZod(jsonSchema)
+    const zodSchema = eval(zodSchemaString)
     if (typeof zodSchema?.parse !== 'function') {
-      throw new Error('Eval did not produce a valid Zod schema.');
+      throw new Error('Eval did not produce a valid Zod schema.')
     }
-    return zodSchema as z.ZodTypeAny;
+    return zodSchema as z.ZodTypeAny
   } catch (err: any) {
     console.error(
       `Failed to generate/evaluate Zod schema for '${toolName}':`,
-      err,
-    );
-    return z.object({}).passthrough();
+      err
+    )
+    return z.object({}).passthrough()
   }
 }
